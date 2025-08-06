@@ -1,0 +1,77 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+    
+
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+
+    services: # use GitHub Actions service containers
+      redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Optional: install test deps, e.g. pytest, flake8
+          pip install pytest
+
+      - name: Run Lint
+        run: |
+          # Skip/lint example as needed
+          echo "Linting step here"
+          # flake8 src/
+
+      - name: Run Tests
+        env:
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+        run: |
+          pytest tests/
+
+      - name: Build Docker image
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}:latest .
+
+      # Example: DockerHub login and push
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push Docker image
+        run: |
+          docker tag ghcr.io/${{ github.repository }}:latest ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:latest
+
+      # Optional: Deploy on remote (e.g., via SSH to a Docker server)
+      # - name: Deploy to server
+      #   uses: appleboy/ssh-action@v0.1.10
+      #   with:
+      #     host: ${{ secrets.SERVER_IP }}
+      #     username: ${{ secrets.SERVER_USER }}
+      #     key: ${{ secrets.SERVER_SSH_KEY }}
+      #     script: |
+      #       docker pull ${{ secrets.DOCKERHUB_USERNAME }}/sample-python-redis:latest
+      #       docker stop app || true && docker rm app || true
+      #       docker run -d --name app -p 80:80 ${{ secrets.DOCKERHUB_USERNAME }}/sample-python-redis:latest
+
