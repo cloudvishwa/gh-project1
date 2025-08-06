@@ -109,6 +109,8 @@ jobs:
           # Start a Redis container (background)
           docker run -d --name test-redis -p 6379:6379 redis:latest
 
+          docker build -t ghcr.io/${{ github.repository }}:latest .
+
           # Start your app container, link to Redis
           docker run -d --name test-app --link test-redis:redis -e REDIS_HOST=redis -p 5000:5000 ghcr.io/${{ github.repository }}:latest
 
