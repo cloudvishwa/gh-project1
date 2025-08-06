@@ -133,7 +133,7 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t ghcr.io/${{ github.repository }}:${{ github.run_id }} .
+          docker build -t ghcr.io/${{ github.repository }}:v2 .
 
       # Example: DockerHub login and push
       - name: Login to DockerHub
@@ -144,18 +144,23 @@ jobs:
 
       - name: Push Docker image
         run: |
-          docker tag ghcr.io/${{ github.repository }}:${{ github.run_id }} ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:${{ github.run_id }}
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:${{ github.run_id }}
+          docker tag ghcr.io/${{ github.repository }}:v2 ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:v2
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:v2
 
-      # Optional: Deploy on remote (e.g., via SSH to a Docker server)
-      # - name: Deploy to server
-      #   uses: appleboy/ssh-action@v0.1.10
-      #   with:
-      #     host: ${{ secrets.SERVER_IP }}
-      #     username: ${{ secrets.SERVER_USER }}
-      #     key: ${{ secrets.SERVER_SSH_KEY }}
-      #     script: |
-      #       docker pull ${{ secrets.DOCKERHUB_USERNAME }}/sample-python-redis:latest
-      #       docker stop app || true && docker rm app || true
-      #       docker run -d --name app -p 80:80 ${{ secrets.DOCKERHUB_USERNAME }}/sample-python-redis:latest
+  deploy-vm:
+    needs: docker-push
+    runs-on: ubuntu-latest
+    steps:
+    #  Optional: Deploy on remote (e.g., via SSH to a Docker server)
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:v2
+            docker stop app || true && docker rm app || true
+            docker run -d --name test-redis -p 6379:6379 redis:latest
+            docker run -d --name test-app --link test-redis:redis -e REDIS_HOST=redis -p 5000:5000 ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:v2
 
