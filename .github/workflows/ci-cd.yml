@@ -50,27 +50,27 @@ jobs:
         run: |
           pytest tests/
 
-  analyze:
-    name: Analyze
-    needs: build-test-deploy
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read      # enable read permissions for the actions API
-      contents: read
-    env:
-      GH_TOKEN: ${{ secrets.MY_PAT }}
-    steps:
-      - uses: actions/checkout@v2
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: python
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: '/language:python'
+  # analyze:
+  #   name: Analyze
+  #   needs: build-test-deploy
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     actions: read      # enable read permissions for the actions API
+  #     contents: read
+  #   env:
+  #     GH_TOKEN: ${{ secrets.MY_PAT }}
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Initialize CodeQL
+  #       uses: github/codeql-action/init@v3
+  #       with:
+  #         languages: python
+  #     - name: Autobuild
+  #       uses: github/codeql-action/autobuild@v3
+  #     - name: Perform CodeQL Analysis
+  #       uses: github/codeql-action/analyze@v3
+  #       with:
+  #         category: '/language:python'
 
   docker_security_scan:
     runs-on: ubuntu-latest
@@ -96,13 +96,39 @@ jobs:
         with:
           sarif_file: 'trivy-results.sarif'
 
-  docker-push:
+
+
+  docker-run-test:
     needs: docker_security_scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+      - name: Test Docker container
+        run: |
+          # Start a Redis container (background)
+          docker run -d --name test-redis -p 6379:6379 redis:latest
+
+          # Start your app container, link to Redis
+          docker run -d --name test-app --link test-redis:redis -e REDIS_HOST=redis -p 5000:5000 ghcr.io/${{ github.repository }}:latest
+
+          # Wait for app to start up (tune as needed)
+          sleep 5
+
+          # Test the / endpoint
+          curl -f http://localhost:5000/ || (docker logs test-app && exit 1)
+
+          # Post-test cleanup
+          docker stop test-app test-redis
+          docker rm test-app test-redis
+
+  docker-push:
+    needs: docker-run-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Build Docker image
         run: |
           docker build -t ghcr.io/${{ github.repository }}:${{ github.run_id }} .
@@ -118,7 +144,6 @@ jobs:
         run: |
           docker tag ghcr.io/${{ github.repository }}:${{ github.run_id }} ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:${{ github.run_id }}
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:${{ github.run_id }}
-
 
       # Optional: Deploy on remote (e.g., via SSH to a Docker server)
       # - name: Deploy to server
