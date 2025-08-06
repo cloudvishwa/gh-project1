@@ -47,9 +47,30 @@ jobs:
         run: |
           pytest tests/
 
+  analyze:
+    name: Analyze
+    needs: build-test-deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:python'
+
+  docker-push:
+    needs: analyze
+    runs-on: ubuntu-latest
+    steps:
       - name: Build Docker image
         run: |
-          docker build -t ghcr.io/${{ github.repository }}:latest .
+          docker build -t ghcr.io/${{ github.repository }}:${{ github.run_id }} .
 
       # Example: DockerHub login and push
       - name: Login to DockerHub
@@ -60,8 +81,9 @@ jobs:
 
       - name: Push Docker image
         run: |
-          docker tag ghcr.io/${{ github.repository }}:latest ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:latest
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:latest
+          docker tag ghcr.io/${{ github.repository }}:${{ github.run_id }} ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:${{ github.run_id }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/gh-python-redis:${{ github.run_id }}
+
 
       # Optional: Deploy on remote (e.g., via SSH to a Docker server)
       # - name: Deploy to server
